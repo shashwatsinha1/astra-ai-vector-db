@@ -2,134 +2,115 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>VectorDB — HNSW + RAG</title>
+<title>Astra VectorDB - HNSW + RAG</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:     #07070f;
-  --card:   #0c0c18;
-  --border: #151528;
+  --bg:     #080a0f;
+  --card:   #10131c;
+  --panel:  #121723;
+  --panel2: #0d111a;
+  --border: #242b3a;
   --cs:     #00d9ff;
-  --math:   #b388ff;
+  --math:   #9d8cff;
   --food:   #ffb74d;
   --sports: #69f0ae;
-  --accent: #6c63ff;
-  --text:   #cdd6f4;
-  --muted:  #4a4a6a;
+  --accent: #7c8cff;
+  --accent2:#36d6b5;
+  --text:   #e8edf8;
+  --muted:  #8b95aa;
+  --faint:  #586174;
   --red:    #f38ba8;
   --green:  #a6e3a1;
+  --shadow: 0 18px 50px rgba(0,0,0,.26);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-* {
-  transition: all 0.2s ease;
-}
 body {
-  background: var(--bg); color: var(--text);
-  font-family: 'Fira Code', 'Courier New', monospace;
+  background: linear-gradient(180deg, #0b0f17 0%, #080a0f 42%, #06070b 100%);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   height: 100vh; overflow: hidden;
   display: flex; flex-direction: column;
-}
-body::before {
-  content: "";
-  position: fixed;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(108,99,255,0.18), transparent);
-  top: -200px;
-  left: -200px;
-  z-index: -1;
-  pointer-events: none;     
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(0,217,255,0.12), transparent);
-  bottom: -150px;
-  right: -150px;
-  z-index: -1;              
-  pointer-events: none;     
 }
 
 /* ── HEADER ── */
 header {
-  background: var(--card); border-bottom: 1px solid var(--border);
-  padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  background: rgba(16,19,28,.92); border-bottom: 1px solid var(--border);
+  padding: 12px 18px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(255,255,255,.03);
 }
 header h1 {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  background: linear-gradient(270deg, #00d9ff, #6c63ff, #b388ff);
-  background-size: 400% 400%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: glowFlow 6s ease infinite;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: .2px;
+  color: var(--text);
+  min-width: max-content;
 }
-
-@keyframes glowFlow {
-  0% { background-position: 0% }
-  50% { background-position: 100% }
-  100% { background-position: 0% }
+.badge {
+  font-family: 'Fira Code', ui-monospace, monospace;
+  font-size: 10px; padding: 4px 8px; border-radius: 999px; letter-spacing: .5px;
+  border: 1px solid var(--border); color: var(--muted); background: rgba(255,255,255,.025);
 }
-.badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; letter-spacing: 1px; border: 1px solid var(--border); color: var(--muted); }
-.badge.hl { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.12); }
-.badge.ok { border-color: var(--green); color: var(--green); background: rgba(166,227,161,.1); }
-.badge.err { border-color: var(--red); color: var(--red); background: rgba(243,139,168,.1); }
-#statsLabel { margin-left: auto; font-size: 11px; color: var(--muted); }
+.badge.hl { border-color: rgba(124,140,255,.45); color: var(--accent); background: rgba(124,140,255,.12); }
+.badge.ok { border-color: rgba(166,227,161,.45); color: var(--green); background: rgba(166,227,161,.1); }
+.badge.err { border-color: rgba(243,139,168,.45); color: var(--red); background: rgba(243,139,168,.1); }
+#statsLabel { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 /* ── LAYOUT ── */
 .layout { display: flex; flex: 1; overflow: hidden; }
-.left-panel { width: 260px; flex-shrink: 0; background: rgba(12,12,24,0.65);backdrop-filter: blur(14px); border-right: 1px solid rgba(255,255,255,0.05); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 18px; }
-.center-panel { flex: 1; position: relative; overflow: hidden; }
+.left-panel { width: 300px; flex-shrink: 0; background: rgba(13,17,26,.92); border-right: 1px solid var(--border); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.center-panel { flex: 1; position: relative; overflow: hidden; background: #070910; }
 #scatter { display: block; width: 100%; height: 100%; }
-.right-panel { width: 360px; flex-shrink: 0; background: rgba(12,12,24,0.65);backdrop-filter: blur(14px); border-left: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; overflow: hidden; }
+.right-panel { width: 420px; flex-shrink: 0; background: rgba(13,17,26,.92); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.left-panel > div,
+.tab-content > div {
+  background: linear-gradient(180deg, rgba(18,23,35,.98), rgba(13,17,26,.98));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.025) inset;
+}
+.tab-content > div:has(.chat-history) { min-height: 0; flex: 1; }
 
 /* ── TABS ── */
-.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.tab { flex: 1; padding: 10px 6px; text-align: center; font-size: 10px; letter-spacing: 1px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: all .2s; }
-.tab.on { color: var(--accent); border-bottom-color: var(--accent); }
-.tab-content { display: none; flex: 1; overflow-y: auto; padding: 16px; flex-direction: column; gap: 16px; }
+.tabs { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab { flex: 1; padding: 9px 6px; text-align: center; font-size: 10px; letter-spacing: .8px; cursor: pointer; color: var(--muted); border: 1px solid transparent; border-radius: 7px; transition: background .15s, color .15s, border-color .15s; font-family: 'Fira Code', ui-monospace, monospace; }
+.tab:hover { color: var(--text); background: rgba(255,255,255,.035); }
+.tab.on { color: var(--text); border-color: rgba(124,140,255,.45); background: rgba(124,140,255,.13); }
+.tab-content { display: none; flex: 1; overflow-y: auto; padding: 14px; flex-direction: column; gap: 12px; }
 .tab-content.on { display: flex; }
 
 /* ── COMMON COMPONENTS ── */
-.sec { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.sec { font-family: 'Fira Code', ui-monospace, monospace; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--faint); margin-bottom: 9px; }
 input[type=text], select, textarea {
-  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-  padding: 9px 11px; border-radius: 6px; font-family: inherit; font-size: 12px; outline: none; transition: border-color .2s;
+  width: 100%; background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  padding: 10px 11px; border-radius: 7px; font-family: inherit; font-size: 13px; outline: none;
+  transition: border-color .15s, box-shadow .15s, background .15s;
 }
-input[type=text]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input[type=text]:focus, select:focus, textarea:focus { border-color: rgba(124,140,255,.7); box-shadow: 0 0 0 3px rgba(124,140,255,.12); background: #0b0f18; }
 textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
 select option { background: var(--card); }
 input[type=range] { width: 100%; accent-color: var(--accent); background: transparent; border: none; padding: 0; }
 button {
-  width: 100%; padding: 9px 14px; border: none; border-radius: 6px; cursor: pointer;
-  font-family: inherit; font-size: 12px; font-weight: 500; letter-spacing: .5px; transition: all .2s;
+  width: 100%; padding: 10px 14px; border: none; border-radius: 7px; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: .3px;
+  transition: transform .15s, box-shadow .15s, background .15s, border-color .15s;
 }
-.btn-p { background: linear-gradient(135deg, #6c63ff, #4f46e5);
-  border-radius: 10px;
-  font-weight: 600;
-  transition: all 0.25s ease;
-}
-.btn-p:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 0 35px rgba(108,99,255,0.7);
-}
+.btn-p { background: linear-gradient(135deg, #7c8cff, #36d6b5); color: #081018; }
+.btn-p:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(54,214,181,0.18); }
 .btn-p:disabled { opacity: .5; transform: none; cursor: wait; }
-.btn-s { background: var(--border); color: var(--text); }
-.btn-s:hover { background: #1c1c35; }
+.btn-s { background: #1b2230; color: var(--text); border: 1px solid var(--border); }
+.btn-s:hover { background: #242d3d; }
 .btn-s:disabled { opacity: .5; cursor: wait; }
-.btn-g { background: rgba(166,227,161,.12); color: var(--green); border: 1px solid rgba(166,227,161,.3); }
-.btn-g:hover { background: rgba(166,227,161,.22); }
+.btn-g { background: rgba(54,214,181,.12); color: #8ff3dd; border: 1px solid rgba(54,214,181,.3); }
+.btn-g:hover { background: rgba(54,214,181,.2); }
 .btn-g:disabled { opacity: .5; cursor: wait; }
 
 .algo-row { display: flex; gap: 5px; }
-.algo-btn { flex: 1; padding: 7px 4px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 10px; cursor: pointer; text-align: center; transition: all .2s; letter-spacing: .5px; font-family: inherit; }
-.algo-btn.on { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.12); }
+.algo-btn { flex: 1; padding: 8px 4px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel2); color: var(--muted); font-size: 10px; cursor: pointer; text-align: center; transition: background .15s, color .15s, border-color .15s; letter-spacing: .5px; font-family: 'Fira Code', ui-monospace, monospace; }
+.algo-btn:hover { color: var(--text); }
+.algo-btn.on { border-color: rgba(124,140,255,.55); color: var(--text); background: rgba(124,140,255,.13); }
 
 .legend { display: flex; flex-direction: column; gap: 5px; }
 .leg-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
@@ -137,10 +118,10 @@ button {
 
 /* ── RESULTS ── */
 .results { display: flex; flex-direction: column; gap: 7px; }
-.rcard { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; animation: fadeUp .25s ease; }
+.rcard { background: rgba(8,10,15,.72); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; animation: fadeUp .25s ease; }
 @keyframes fadeUp { from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)} }
 .rcard:hover { border-color: #252545; }
-.rrank { font-size: 9px; color: var(--muted); letter-spacing: 1px; margin-bottom: 3px; }
+.rrank { font-family: 'Fira Code', ui-monospace, monospace; font-size: 9px; color: var(--faint); letter-spacing: 1px; margin-bottom: 3px; }
 .rmeta { font-size: 12px; line-height: 1.4; margin-bottom: 6px; }
 .rfoot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .rcat  { font-size: 9px; padding: 2px 7px; border-radius: 8px; letter-spacing: .5px; }
@@ -149,33 +130,37 @@ button {
 .del:hover { background: rgba(243,139,168,.25); }
 
 /* ── LATENCY / BENCH / LAYERS ── */
-.lat-big { font-size: 32px; font-weight: 600; color: var(--cs); text-shadow: 0 0 20px rgba(0,217,255,.4); }
+.lat-big { font-family: 'Fira Code', ui-monospace, monospace; font-size: 34px; font-weight: 600; color: #8ff3dd; letter-spacing: -.5px; }
 .lat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .bench { display: flex; flex-direction: column; gap: 9px; }
 .brow  { display: flex; flex-direction: column; gap: 3px; }
 .blabel { display: flex; justify-content: space-between; font-size: 10px; }
-.btrack { height: 7px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.btrack { height: 7px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
 .bfill  { height: 100%; border-radius: 4px; transition: width .5s ease; }
 .layers { display: flex; flex-direction: column; gap: 5px; }
 .lrow   { display: flex; align-items: center; gap: 7px; font-size: 10px; }
 .lnum   { width: 18px; text-align: right; color: var(--accent); }
-.ltrack { flex: 1; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.ltrack { flex: 1; height: 5px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
 .lfill  { height: 100%; background: var(--accent); border-radius: 3px; opacity: .7; transition: width .4s; }
 .lcount { width: 80px; text-align: right; color: var(--muted); }
-#vecCvs { display: block; width: 100%; background: var(--bg); border-radius: 5px; }
+#vecCvs { display: block; width: 100%; background: var(--panel2); border-radius: 6px; border: 1px solid var(--border); }
 
 /* ── DOCUMENT LIST ── */
 .doc-list { display: flex; flex-direction: column; gap: 7px; }
-.dcard { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; animation: fadeUp .25s ease; }
+.dcard { background: rgba(8,10,15,.72); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; animation: fadeUp .25s ease; }
 .dcard-title { font-size: 12px; font-weight: 500; margin-bottom: 4px; color: var(--green); }
 .dcard-preview { font-size: 10px; color: var(--muted); line-height: 1.5; margin-bottom: 6px; }
 .dcard-foot { display: flex; justify-content: space-between; align-items: center; }
 .dcard-words { font-size: 9px; color: var(--muted); }
 
 /* ── OLLAMA STATUS ── */
-.ollama-status { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; font-size: 11px; line-height: 1.6; }
+.ollama-status { background: rgba(8,10,15,.72); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 11px; line-height: 1.6; }
 .ollama-status.ok { border-color: rgba(166,227,161,.3); }
 .ollama-status.err { border-color: rgba(243,139,168,.3); }
+.watch-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow: auto; }
+.watch-file { border: 1px solid var(--border); border-radius: 7px; padding: 8px 9px; background: rgba(8,10,15,.72); }
+.watch-path { font-size: 10px; color: var(--text); word-break: break-all; }
+.watch-meta { font-size: 9px; color: var(--muted); margin-top: 3px; }
 
 /* ── CHAT ── */
 .chat-history { display: flex; flex-direction: column; gap: 12px; }
@@ -210,17 +195,27 @@ button {
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+@media (max-width: 1120px) {
+  body { overflow: auto; height: auto; min-height: 100vh; }
+  .layout { flex-direction: column; overflow: visible; }
+  .left-panel, .right-panel { width: 100%; border: 0; border-bottom: 1px solid var(--border); }
+  .center-panel { min-height: 520px; order: 2; }
+  .right-panel { order: 3; min-height: 620px; }
+  header { flex-wrap: wrap; }
+  #statsLabel { width: 100%; margin-left: 0; }
+}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>⚡ Astra AI<span style="color:#6c63ff"></span></h>
+  <h1>Astra VectorDB</h1>
   <span class="badge hl">HNSW</span>
   <span class="badge">KD-TREE</span>
   <span class="badge">BRUTE FORCE</span>
-  <span class="badge" id="ollamaBadge">OLLAMA…</span>
-  <span id="statsLabel">loading…</span>
+  <span class="badge" id="ollamaBadge">OLLAMA...</span>
+  <span id="statsLabel">loading...</span>
 </header>
 
 <div class="layout">
@@ -230,8 +225,8 @@ button {
     <div>
       <div class="sec">Query (Demo Vectors)</div>
       <div style="display:flex;flex-direction:column;gap:6px">
-        <input type="text" id="qInput" placeholder="binary tree, sushi, basketball…" />
-        <button class="btn-p" onclick="runSearch()">⚡ SEARCH</button>
+        <input type="text" id="qInput" placeholder="binary tree, sushi, basketball..." />
+        <button class="btn-p" onclick="runSearch()">SEARCH</button>
       </div>
     </div>
     <div>
@@ -268,7 +263,7 @@ button {
     <div>
       <div class="sec">Insert Demo Vector</div>
       <div style="display:flex;flex-direction:column;gap:6px">
-        <input type="text" id="addMeta" placeholder="Description…" />
+        <input type="text" id="addMeta" placeholder="Description..." />
         <select id="addCat">
           <option value="cs">CS / Algorithms</option>
           <option value="math">Mathematics</option>
@@ -280,7 +275,7 @@ button {
     </div>
     <div>
       <div class="sec">Benchmark</div>
-      <button class="btn-s" onclick="runBenchmark()">▶ COMPARE ALL ALGOS</button>
+      <button class="btn-s" onclick="runBenchmark()">COMPARE ALL ALGOS</button>
     </div>
   </div>
 
@@ -299,13 +294,13 @@ button {
     <div class="tab-content on" id="tab-search">
       <div>
         <div class="sec">Search Latency</div>
-        <div class="lat-big" id="latBig">—</div>
+        <div class="lat-big" id="latBig">-</div>
         <div class="lat-sub" id="latSub">No query yet</div>
       </div>
       <div>
         <div class="sec">Top Matches</div>
         <div class="results" id="results">
-          <div style="color:var(--muted);font-size:11px">Run a search to see results…</div>
+          <div style="color:var(--muted);font-size:11px">Run a search to see results...</div>
         </div>
       </div>
       <div>
@@ -319,7 +314,7 @@ button {
       <div>
         <div class="sec">HNSW Graph Layers</div>
         <div class="layers" id="layers">
-          <div style="color:var(--muted);font-size:11px">Loading…</div>
+          <div style="color:var(--muted);font-size:11px">Loading...</div>
         </div>
       </div>
     </div>
@@ -328,14 +323,20 @@ button {
     <div class="tab-content" id="tab-docs">
       <div>
         <div class="sec">Ollama Status</div>
-        <div class="ollama-status" id="ollamaStatus">Checking…</div>
+        <div class="ollama-status" id="ollamaStatus">Checking...</div>
       </div>
       <div>
-        <div class="sec">Insert Document</div>
+        <div class="sec">Live File Ingestion</div>
+        <div class="ollama-status" id="watchStatus">Watching local documents...</div>
+        <div class="watch-list" id="watchFiles" style="margin-top:8px"></div>
+        <button class="btn-s" onclick="rescanWatch()" style="margin-top:8px;width:100%">RESCAN WATCH FOLDER</button>
+      </div>
+      <div>
+        <div class="sec">Manual Insert</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <input type="text" id="docTitle" placeholder="Document title / topic…" />
-          <textarea id="docText" placeholder="Paste your notes, textbook excerpt, lecture content…&#10;&#10;Long text is automatically split into overlapping chunks and each chunk gets its own real embedding via Ollama's nomic-embed-text model."></textarea>
-          <button class="btn-g" id="insertDocBtn" onclick="insertDocument()">⚡ EMBED &amp; INSERT</button>
+          <input type="text" id="docTitle" placeholder="Document title / topic..." />
+          <textarea id="docText" placeholder="Paste your notes, textbook excerpt, lecture content...&#10;&#10;Long text is automatically split into overlapping chunks and each chunk gets its own real embedding via Ollama's nomic-embed-text model."></textarea>
+          <button class="btn-g" id="insertDocBtn" onclick="insertDocument()">EMBED &amp; INSERT</button>
           <div id="insertStatus" style="font-size:11px;color:var(--muted)"></div>
         </div>
       </div>
@@ -352,14 +353,14 @@ button {
       <div>
         <div class="sec">Ask a Question</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <textarea id="ragQuestion" rows="3" placeholder="What is dynamic programming?&#10;Explain the main idea of HNSW.&#10;How does the recipe differ from…"></textarea>
+          <textarea id="ragQuestion" rows="3" placeholder="What is dynamic programming?&#10;Explain the main idea of HNSW.&#10;How does this document compare with another?"></textarea>
           <div style="display:flex;gap:6px">
             <select id="ragK" style="width:auto;flex-shrink:0">
               <option value="2">Top 2</option>
               <option value="3" selected>Top 3</option>
               <option value="5">Top 5</option>
             </select>
-            <button class="btn-g" id="askBtn" onclick="askAI()" style="flex:1">🤖 ASK AI</button>
+            <button class="btn-g" id="askBtn" onclick="askAI()" style="flex:1">ASK AI</button>
           </div>
           <div style="font-size:10px;color:var(--muted)">Uses your inserted documents as context. Answers come from the local LLM.</div>
         </div>
@@ -367,7 +368,7 @@ button {
       <div>
         <div class="sec">Conversation</div>
         <div class="chat-history" id="chatHistory">
-          <div style="color:var(--muted);font-size:11px">Ask a question about your inserted documents…</div>
+          <div style="color:var(--muted);font-size:11px">Ask a question about your inserted documents...</div>
         </div>
       </div>
     </div>
@@ -381,11 +382,17 @@ button {
 // ════════════════════════════════════════════════════════════
 //  CONSTANTS
 // ════════════════════════════════════════════════════════════
-const API  = 'http://localhost:8080';
+const API  = location.origin;
 const DIMS = 16;
 const COL  = { cs:'#00d9ff', math:'#b388ff', food:'#ffb74d', sports:'#69f0ae', doc:'#a6e3a1', default:'#90a4ae' };
 const DIM_COL = ['#00d9ff','#00d9ff','#00d9ff','#00d9ff','#b388ff','#b388ff','#b388ff','#b388ff',
                  '#ffb74d','#ffb74d','#ffb74d','#ffb74d','#69f0ae','#69f0ae','#69f0ae','#69f0ae'];
+
+function escHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
 
 // ════════════════════════════════════════════════════════════
 //  STATE
@@ -551,7 +558,7 @@ sc.addEventListener('mousemove', e => {
   if (hoverItem) {
     const col=COL[hoverItem.category]||COL.default;
     tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-8)+'px';
-    tip.innerHTML=`<span style="color:${col}">[${hoverItem.category}]</span><br>${hoverItem.metadata}`;
+    tip.innerHTML=`<span style="color:${col}">[${escHtml(hoverItem.category)}]</span><br>${escHtml(hoverItem.metadata)}`;
   } else tip.style.display='none';
 });
 sc.addEventListener('mouseleave',()=>{hoverItem=null;document.getElementById('tip').style.display='none';});
@@ -614,9 +621,9 @@ function renderResults(results) {
     const col=COL[r.category]||COL.default;
     return `<div class="rcard" onmouseenter="hoverItem={id:${r.id}}" onmouseleave="hoverItem=null">
       <div class="rrank">#${i+1} NEAREST</div>
-      <div class="rmeta">${r.metadata}</div>
+      <div class="rmeta">${escHtml(r.metadata)}</div>
       <div class="rfoot">
-        <span class="rcat" style="background:${col}18;color:${col};border:1px solid ${col}44">${r.category.toUpperCase()}</span>
+        <span class="rcat" style="background:${col}18;color:${col};border:1px solid ${col}44">${escHtml(r.category.toUpperCase())}</span>
         <span class="rdist">dist: ${r.distance.toFixed(5)}</span>
         <button class="del" onclick="deleteItem(${r.id})">✕</button>
       </div>
@@ -701,10 +708,11 @@ async function checkOllamaStatus() {
       badge.className='badge ok'; badge.textContent='OLLAMA ✓';
       box.className='ollama-status ok';
       box.innerHTML=`<span style="color:var(--green)">● Online</span><br>`+
-        `Embed: <span style="color:var(--accent)">${d.embedModel}</span><br>`+
-        `Generate: <span style="color:var(--accent)">${d.genModel}</span><br>`+
+        `Embed: <span style="color:var(--accent)">${escHtml(d.embedModel)}</span><br>`+
+        `Generate: <span style="color:var(--accent)">${escHtml(d.genModel)}</span><br>`+
         `Dims: <span style="color:var(--muted)">${d.docDims||'(first insert sets this)'}</span><br>`+
-        `Documents: <span style="color:var(--text)">${d.docCount}</span>`;
+        `Documents: <span style="color:var(--text)">${d.docCount}</span><br>`+
+        `Watch: <span style="color:var(--muted)">${escHtml(d.watchDir||'documents')}</span>`;
     } else {
       badge.className='badge err'; badge.textContent='OLLAMA ✗';
       box.className='ollama-status err';
@@ -714,6 +722,35 @@ async function checkOllamaStatus() {
         `2. ollama pull nomic-embed-text<br>`+
         `3. ollama pull llama3.2</span>`;
     }
+  } catch(_) {}
+}
+
+async function loadWatchStatus() {
+  try {
+    const r=await fetch(API+'/watch/status'), d=await r.json();
+    const box=document.getElementById('watchStatus');
+    const list=document.getElementById('watchFiles');
+    box.className='ollama-status '+(d.running?'ok':'err');
+    box.innerHTML=`Directory:<br><span style="color:var(--accent)">${escHtml(d.directory)}</span>`+
+      (d.lastError?`<br><span style="color:var(--red)">${escHtml(d.lastError)}</span>`:'');
+    if (!d.files.length) {
+      list.innerHTML='<div style="color:var(--muted);font-size:11px">Drop .txt or .md files into the watch folder.</div>';
+      return;
+    }
+    list.innerHTML=d.files.map(f=>`
+      <div class="watch-file">
+        <div class="watch-path">${escHtml(f.path)}</div>
+        <div class="watch-meta">${escHtml(f.status)} · ${f.chunks} chunk(s)</div>
+      </div>`).join('');
+  } catch(_) {}
+}
+
+async function rescanWatch() {
+  try {
+    await fetch(API+'/watch/rescan',{method:'POST'});
+    await loadWatchStatus();
+    await loadDocList();
+    await checkOllamaStatus();
   } catch(_) {}
 }
 
@@ -734,7 +771,7 @@ async function insertDocument() {
     });
     const d=await r.json();
     if (d.error) {
-      status.innerHTML=`<span style="color:var(--red)">✗ ${d.error}</span>`;
+      status.innerHTML=`<span style="color:var(--red)">✗ ${escHtml(d.error)}</span>`;
     } else {
       status.innerHTML=`<span style="color:var(--green)">✓ Inserted ${d.chunks} chunk(s) · ${d.dims}D embeddings</span>`;
       document.getElementById('docTitle').value='';
@@ -765,10 +802,10 @@ async function loadDocList() {
     }
     document.getElementById('docList').innerHTML=docs.map(d=>`
       <div class="dcard">
-        <div class="dcard-title">${d.title}</div>
-        <div class="dcard-preview">${d.preview}</div>
+        <div class="dcard-title">${escHtml(d.title)}</div>
+        <div class="dcard-preview">${escHtml(d.preview)}</div>
         <div class="dcard-foot">
-          <span class="dcard-words">${d.words} words</span>
+          <span class="dcard-words">${d.words} words · ${escHtml(d.source||'manual')}</span>
           <button class="del" onclick="deleteDoc(${d.id})">✕</button>
         </div>
       </div>`).join('');
@@ -857,9 +894,16 @@ async function askAI() {
     thinkDiv.remove();
 
     const aDiv=document.createElement('div'); aDiv.className='chat-a';
+    d.model = escHtml(d.model || 'llm');
+    d.contexts = (d.contexts || []).map(c => ({
+      ...c,
+      title: escHtml(c.title),
+      text: escHtml(c.text),
+      distance: Number(c.distance || 0)
+    }));
 
     if (d.error) {
-      aDiv.innerHTML=`<div class="chat-a-label">ERROR</div><div class="chat-a-text" style="color:var(--red)">${d.error}</div>`;
+      aDiv.innerHTML=`<div class="chat-a-label">ERROR</div><div class="chat-a-text" style="color:var(--red)">${escHtml(d.error)}</div>`;
     } else {
       // Build answer block with typewriter
       aDiv.innerHTML=`<div class="chat-a-label">🤖 ${d.model||'llm'}</div>`+
@@ -908,6 +952,9 @@ function toggleCtx(i) {
 resize(); drawFrame();
 loadItems().then(loadHNSW);
 checkOllamaStatus();
+loadWatchStatus();
+setInterval(loadWatchStatus, 5000);
+setInterval(checkOllamaStatus, 10000);
 </script>
 </body>
 </html>

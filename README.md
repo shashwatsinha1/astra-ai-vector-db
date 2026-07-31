@@ -3,6 +3,49 @@
 This project is a fully functional vector database developed in C++ with a simple web interface. The goal of this project is to understand how modern vector databases like Pinecone or Weaviate work internally by implementing everything from scratch.
 
 The system includes multiple search algorithms such as HNSW, KD-Tree, and brute-force search. It also integrates a Retrieval-Augmented Generation (RAG) pipeline using a local language model through Ollama.
+
+## Real-Time Vector Database Upgrade
+
+This version is no longer only a manual demo. The backend runs a live ingestion service that watches a local `documents/` folder for `.txt`, `.md`, and `.markdown` files. When a file is created, edited, or deleted, the server automatically:
+
+1. Reads the file.
+2. Splits it into overlapping chunks.
+3. Generates real embeddings with Ollama `nomic-embed-text`.
+4. Inserts or replaces those chunks in the document vector index.
+5. Makes them searchable immediately through the RAG API and web UI.
+
+This gives the project a real-world shape: a local vector search service with automatic ingestion, approximate nearest-neighbor retrieval, REST endpoints, a live status UI, and local LLM question answering.
+
+### Runtime Configuration
+
+You can configure the service with environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `VECTORDB_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` only if you intentionally want LAN access. |
+| `VECTORDB_PORT` | `8080` | HTTP server port. |
+| `VECTORDB_WATCH_DIR` | `documents` | Folder scanned for live document ingestion. |
+
+### Real-Time Workflow
+
+```powershell
+ollama serve
+ollama pull nomic-embed-text
+ollama pull llama3.2
+
+g++ -std=c++17 -O2 main.cpp -o db -lws2_32
+./db
+```
+
+Then open `http://127.0.0.1:8080`, drop `.txt` or `.md` files into `documents/`, and watch the Live File Ingestion panel update. Ask questions in the Ask AI tab; the answer is generated from the indexed file chunks.
+
+### CMake Build
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release
+```
+
 ---
 
 ## What This Project Does
