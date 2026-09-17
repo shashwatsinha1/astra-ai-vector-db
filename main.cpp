@@ -243,9 +243,12 @@ class HNSW {
     }
 
 public:
-    HNSW(int m = 16, int efBuild = 200)
-        : M(m), M0(2*m), ef_build(efBuild),
-          mL(1.0f / std::log((float)m)), rng(42) {}
+    HNSW(int m = 16, int efBuild = 200, int m0 = -1, unsigned int seed = 42)
+        : M(std::max(2, m)),
+          M0(m0 > 0 ? m0 : 2 * std::max(2, m)),
+          ef_build(std::max(1, efBuild)),
+          mL(1.0f / std::log(std::max(2.0f, (float)m))),
+          rng(seed) {}
 
     void insert(const VectorItem& item, DistFn dist) {
         int id  = item.id;
@@ -486,6 +489,13 @@ std::vector<float> parseVec(const std::string& s) {
     return v;
 }
 
+std::string trim(const std::string& s) {
+    size_t a = 0, b = s.size();
+    while (a < b && std::isspace((unsigned char)s[a])) a++;
+    while (b > a && std::isspace((unsigned char)s[b - 1])) b--;
+    return s.substr(a, b - a);
+}
+
 // Extract a JSON string field value (handles basic escape sequences)
 std::string extractStr(const std::string& body, const std::string& key) {
     size_t p = body.find('"' + key + '"');
@@ -524,6 +534,39 @@ int extractInt(const std::string& body, const std::string& key, int def = 0) {
     try { return std::stoi(body.substr(p)); } catch (...) { return def; }
 }
 
+std::vector<int> extractIntList(const std::string& body, const std::string& key) {
+    std::vector<int> res;
+    size_t p = body.find('"' + key + '"');
+    if (p == std::string::npos) return res;
+    p = body.find('[', p);
+    if (p == std::string::npos) return res;
+    size_t end = body.find(']', p);
+    if (end == std::string::npos) return res;
+    std::string inner = body.substr(p + 1, end - p - 1);
+    std::istringstream ss(inner);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        try {
+            std::string t = trim(item);
+            if (!t.empty()) res.push_back(std::stoi(t));
+        } catch (...) {}
+    }
+    return res;
+}
+
+std::vector<int> parseIntList(const std::string& s) {
+    std::vector<int> res;
+    std::istringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        try {
+            std::string t = trim(item);
+            if (!t.empty()) res.push_back(std::stoi(t));
+        } catch (...) {}
+    }
+    return res;
+}
+
 bool parseBody(const std::string& b, std::string& meta,
                std::string& cat, std::vector<float>& emb)
 {
@@ -549,15 +592,337 @@ void cors(httplib::Response& res) {
 }
 
 // =====================================================================
-//  TEXT CHUNKER
+//  BENCHMARK SUITE (Modular Scaling & Statistical Analysis)
 // =====================================================================
 
-std::string trim(const std::string& s) {
-    size_t a = 0, b = s.size();
-    while (a < b && std::isspace((unsigned char)s[a])) a++;
-    while (b > a && std::isspace((unsigned char)s[b - 1])) b--;
-    return s.substr(a, b - a);
+struct BenchmarkConfig {
+    std::vector<int> sizes = {20, 100, 500, 1000, 5000, 10000};
+    int dims = 16;
+    int k = 5;
+    int warmup = 10;
+    int repetitions = 100;
+    std::string metric = "cosine";
+    unsigned int seed = 42;
+    int hnsw_m = 16;
+    int hnsw_m0 = 32;
+    int hnsw_ef_build = 200;
+    int hnsw_ef_search = 50;
+    std::vector<float> customQuery;
+};
+
+struct BenchmarkStats {
+    double mean_us = 0.0;
+    double median_us = 0.0;
+    double p95_us = 0.0;
+    double min_us = 0.0;
+    double max_us = 0.0;
+    long long index_build_time_us = 0;
+    double recall_at_k = 1.0;
+};
+
+struct BenchmarkDatasetResult {
+    int size = 0;
+    BenchmarkStats bruteforce;
+    BenchmarkStats kdtree;
+    BenchmarkStats hnsw;
+};
+
+struct BenchmarkReport {
+    int dimensions = 16;
+    int k = 5;
+    std::string metric = "cosine";
+    int repetitions = 100;
+    int warmup = 10;
+    unsigned int seed = 42;
+    struct {
+        int m = 16;
+        int m0 = 32;
+        int ef_build = 200;
+        int ef_search = 50;
+    } hnsw_config;
+    std::vector<BenchmarkDatasetResult> datasets;
+
+    // Legacy fields for backward compatibility
+    long long bruteforceUs = 0;
+    long long kdtreeUs = 0;
+    long long hnswUs = 0;
+    int itemCount = 0;
+};
+
+BenchmarkStats calculateStatistics(std::vector<double>& latencies, long long build_time_us, double recall = 1.0) {
+    BenchmarkStats stats;
+    stats.index_build_time_us = build_time_us;
+    stats.recall_at_k = recall;
+    if (latencies.empty()) return stats;
+
+    std::sort(latencies.begin(), latencies.end());
+    size_t n = latencies.size();
+
+    stats.min_us = latencies.front();
+    stats.max_us = latencies.back();
+
+    double sum = 0.0;
+    for (double v : latencies) sum += v;
+    stats.mean_us = sum / (double)n;
+
+    if (n % 2 == 1) {
+        stats.median_us = latencies[n / 2];
+    } else {
+        stats.median_us = (latencies[n / 2 - 1] + latencies[n / 2]) / 2.0;
+    }
+
+    size_t p95_idx = std::min(size_t(std::ceil(0.95 * n)) - 1, n - 1);
+    stats.p95_us = latencies[p95_idx];
+
+    return stats;
 }
+
+double calculateRecall(const std::vector<std::pair<float, int>>& exact_results,
+                       const std::vector<std::pair<float, int>>& approx_results,
+                       int k)
+{
+    if (k <= 0 || exact_results.empty() || approx_results.empty()) return 1.0;
+
+    std::unordered_set<int> exact_ids;
+    for (int i = 0; i < (int)exact_results.size() && i < k; i++) {
+        exact_ids.insert(exact_results[i].second);
+    }
+
+    int hits = 0;
+    for (int i = 0; i < (int)approx_results.size() && i < k; i++) {
+        if (exact_ids.count(approx_results[i].second)) {
+            hits++;
+        }
+    }
+
+    int denom = std::min(k, (int)exact_results.size());
+    return denom > 0 ? (double)hits / (double)denom : 1.0;
+}
+
+std::vector<VectorItem> generateBenchmarkData(int count, int dims, unsigned int seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    std::vector<VectorItem> items;
+    items.reserve(count);
+    for (int i = 0; i < count; i++) {
+        std::vector<float> emb(dims);
+        for (int d = 0; d < dims; d++) {
+            emb[d] = dist(rng);
+        }
+        items.push_back({i + 1, "vec_" + std::to_string(i + 1), "benchmark", std::move(emb)});
+    }
+    return items;
+}
+
+std::vector<float> generateBenchmarkQuery(int dims, unsigned int seed) {
+    std::mt19937 rng(seed ^ 0x9e3779b9);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    std::vector<float> q(dims);
+    for (int d = 0; d < dims; d++) {
+        q[d] = dist(rng);
+    }
+    return q;
+}
+
+BenchmarkReport runBenchmark(const BenchmarkConfig& cfg) {
+    BenchmarkReport report;
+    report.dimensions = clampInt(cfg.dims, 1, 1024);
+    report.repetitions = clampInt(cfg.repetitions, 1, 1000);
+    report.warmup = clampInt(cfg.warmup, 0, 100);
+    report.metric = (cfg.metric == "euclidean" || cfg.metric == "manhattan") ? cfg.metric : "cosine";
+    report.seed = cfg.seed;
+    report.hnsw_config.m = clampInt(cfg.hnsw_m, 2, 128);
+    report.hnsw_config.m0 = cfg.hnsw_m0 > 0 ? clampInt(cfg.hnsw_m0, 2, 256) : (2 * report.hnsw_config.m);
+    report.hnsw_config.ef_build = clampInt(cfg.hnsw_ef_build, 1, 1000);
+    report.hnsw_config.ef_search = clampInt(cfg.hnsw_ef_search, 1, 1000);
+
+    auto dfn = getDistFn(report.metric);
+
+    // Filter, clamp, and sort requested dataset sizes
+    std::vector<int> clean_sizes;
+    for (int s : cfg.sizes) {
+        int cs = clampInt(s, 1, 50000);
+        if (std::find(clean_sizes.begin(), clean_sizes.end(), cs) == clean_sizes.end()) {
+            clean_sizes.push_back(cs);
+        }
+    }
+    std::sort(clean_sizes.begin(), clean_sizes.end());
+    if (clean_sizes.empty()) {
+        clean_sizes = {20, 100, 500, 1000, 5000, 10000};
+    }
+
+    report.k = clampInt(cfg.k, 1, 1000);
+
+    for (int N : clean_sizes) {
+        int k_eff = std::min(report.k, N);
+
+        // 1. Generate dataset deterministically
+        auto items = generateBenchmarkData(N, report.dimensions, report.seed + (unsigned int)N);
+
+        // 2. Query vector (same for all 3 algorithms)
+        std::vector<float> q;
+        if ((int)cfg.customQuery.size() == report.dimensions) {
+            q = cfg.customQuery;
+        } else {
+            q = generateBenchmarkQuery(report.dimensions, report.seed + (unsigned int)N);
+        }
+
+        // 3. Build Brute Force index
+        auto t_bf0 = std::chrono::steady_clock::now();
+        BruteForce bf;
+        bf.items.reserve(N);
+        for (const auto& it : items) bf.insert(it);
+        auto t_bf1 = std::chrono::steady_clock::now();
+        long long bf_build_us = std::chrono::duration_cast<std::chrono::microseconds>(t_bf1 - t_bf0).count();
+
+        // 4. Build KD-Tree index
+        auto t_kd0 = std::chrono::steady_clock::now();
+        KDTree kdt(report.dimensions);
+        for (const auto& it : items) kdt.insert(it);
+        auto t_kd1 = std::chrono::steady_clock::now();
+        long long kd_build_us = std::chrono::duration_cast<std::chrono::microseconds>(t_kd1 - t_kd0).count();
+
+        // 5. Build HNSW index
+        auto t_hnsw0 = std::chrono::steady_clock::now();
+        HNSW hnsw(report.hnsw_config.m, report.hnsw_config.ef_build, report.hnsw_config.m0, report.seed);
+        for (const auto& it : items) hnsw.insert(it, dfn);
+        auto t_hnsw1 = std::chrono::steady_clock::now();
+        long long hnsw_build_us = std::chrono::duration_cast<std::chrono::microseconds>(t_hnsw1 - t_hnsw0).count();
+
+        // 6. Ground-Truth and Recall calculation (performed once outside timed search loops)
+        auto bf_gt = bf.knn(q, k_eff, dfn);
+        auto hnsw_res_check = hnsw.knn(q, k_eff, report.hnsw_config.ef_search, dfn);
+        double hnsw_recall = calculateRecall(bf_gt, hnsw_res_check, k_eff);
+
+        auto kd_res_check = kdt.knn(q, k_eff, dfn);
+        double kd_recall = calculateRecall(bf_gt, kd_res_check, k_eff);
+
+        // 7. Warm-up iterations (NOT included in recorded latency timings)
+        for (int w = 0; w < report.warmup; w++) {
+            auto r1 = bf.knn(q, k_eff, dfn);
+            auto r2 = kdt.knn(q, k_eff, dfn);
+            auto r3 = hnsw.knn(q, k_eff, report.hnsw_config.ef_search, dfn);
+            (void)r1; (void)r2; (void)r3;
+        }
+
+        // 8. Timed search repetitions for Brute Force
+        std::vector<double> bf_latencies;
+        bf_latencies.reserve(report.repetitions);
+        for (int r = 0; r < report.repetitions; r++) {
+            auto t0 = std::chrono::steady_clock::now();
+            auto res = bf.knn(q, k_eff, dfn);
+            auto t1 = std::chrono::steady_clock::now();
+            bf_latencies.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+            (void)res;
+        }
+
+        // 9. Timed search repetitions for KD-Tree
+        std::vector<double> kd_latencies;
+        kd_latencies.reserve(report.repetitions);
+        for (int r = 0; r < report.repetitions; r++) {
+            auto t0 = std::chrono::steady_clock::now();
+            auto res = kdt.knn(q, k_eff, dfn);
+            auto t1 = std::chrono::steady_clock::now();
+            kd_latencies.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+            (void)res;
+        }
+
+        // 10. Timed search repetitions for HNSW
+        std::vector<double> hnsw_latencies;
+        hnsw_latencies.reserve(report.repetitions);
+        for (int r = 0; r < report.repetitions; r++) {
+            auto t0 = std::chrono::steady_clock::now();
+            auto res = hnsw.knn(q, k_eff, report.hnsw_config.ef_search, dfn);
+            auto t1 = std::chrono::steady_clock::now();
+            hnsw_latencies.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+            (void)res;
+        }
+
+        // 11. Aggregate statistical distributions
+        BenchmarkDatasetResult dres;
+        dres.size = N;
+        dres.bruteforce = calculateStatistics(bf_latencies, bf_build_us, 1.0);
+        dres.kdtree = calculateStatistics(kd_latencies, kd_build_us, kd_recall);
+        dres.hnsw = calculateStatistics(hnsw_latencies, hnsw_build_us, hnsw_recall);
+
+        report.datasets.push_back(dres);
+    }
+
+    // Populate legacy compatibility fields from the first dataset
+    if (!report.datasets.empty()) {
+        report.bruteforceUs = (long long)std::round(report.datasets[0].bruteforce.median_us);
+        report.kdtreeUs = (long long)std::round(report.datasets[0].kdtree.median_us);
+        report.hnswUs = (long long)std::round(report.datasets[0].hnsw.median_us);
+        report.itemCount = report.datasets[0].size;
+    }
+
+    return report;
+}
+
+std::string benchmarkReportToJson(const BenchmarkReport& report) {
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    ss << "{"
+       << "\"dimensions\":" << report.dimensions
+       << ",\"k\":" << report.k
+       << ",\"metric\":" << jS(report.metric)
+       << ",\"repetitions\":" << report.repetitions
+       << ",\"warmup\":" << report.warmup
+       << ",\"seed\":" << report.seed
+       << ",\"hnsw_config\":{"
+       << "\"m\":" << report.hnsw_config.m
+       << ",\"m0\":" << report.hnsw_config.m0
+       << ",\"ef_build\":" << report.hnsw_config.ef_build
+       << ",\"ef_search\":" << report.hnsw_config.ef_search
+       << "},"
+       << "\"bruteforceUs\":" << report.bruteforceUs
+       << ",\"kdtreeUs\":" << report.kdtreeUs
+       << ",\"hnswUs\":" << report.hnswUs
+       << ",\"itemCount\":" << report.itemCount
+       << ",\"datasets\":[";
+    for (size_t i = 0; i < report.datasets.size(); i++) {
+        if (i) ss << ',';
+        const auto& d = report.datasets[i];
+        ss << "{"
+           << "\"size\":" << d.size
+           << ",\"bruteforce\":{"
+           << "\"mean_us\":" << d.bruteforce.mean_us
+           << ",\"median_us\":" << d.bruteforce.median_us
+           << ",\"p95_us\":" << d.bruteforce.p95_us
+           << ",\"min_us\":" << d.bruteforce.min_us
+           << ",\"max_us\":" << d.bruteforce.max_us
+           << ",\"index_build_time_us\":" << d.bruteforce.index_build_time_us
+           << ",\"index_build_time_ms\":" << (d.bruteforce.index_build_time_us / 1000.0)
+           << "},"
+           << "\"kdtree\":{"
+           << "\"mean_us\":" << d.kdtree.mean_us
+           << ",\"median_us\":" << d.kdtree.median_us
+           << ",\"p95_us\":" << d.kdtree.p95_us
+           << ",\"min_us\":" << d.kdtree.min_us
+           << ",\"max_us\":" << d.kdtree.max_us
+           << ",\"recall_at_k\":" << std::setprecision(4) << d.kdtree.recall_at_k << std::setprecision(2)
+           << ",\"index_build_time_us\":" << d.kdtree.index_build_time_us
+           << ",\"index_build_time_ms\":" << (d.kdtree.index_build_time_us / 1000.0)
+           << "},"
+           << "\"hnsw\":{"
+           << "\"mean_us\":" << d.hnsw.mean_us
+           << ",\"median_us\":" << d.hnsw.median_us
+           << ",\"p95_us\":" << d.hnsw.p95_us
+           << ",\"min_us\":" << d.hnsw.min_us
+           << ",\"max_us\":" << d.hnsw.max_us
+           << ",\"recall_at_k\":" << std::setprecision(4) << d.hnsw.recall_at_k << std::setprecision(2)
+           << ",\"index_build_time_us\":" << d.hnsw.index_build_time_us
+           << ",\"index_build_time_ms\":" << (d.hnsw.index_build_time_us / 1000.0)
+           << "}"
+           << "}";
+    }
+    ss << "]}";
+    return ss.str();
+}
+
+// =====================================================================
+//  TEXT CHUNKER
+// =====================================================================
 
 std::string collapseWs(const std::string& s) {
     std::string out;
@@ -1454,19 +1819,165 @@ int main() {
 
     svr.Get("/benchmark", [&](const httplib::Request& req, httplib::Response& res) {
         cors(res);
-        auto q = parseVec(req.get_param_value("v"));
-        if ((int)q.size() != DIMS) {
-            res.set_content("{\"error\":\"need " + std::to_string(DIMS) + "D vector\"}",
-                            "application/json"); return;
+        try {
+            bool hasSizes = req.has_param("sizes");
+            bool hasMulti = req.has_param("multi");
+            bool hasV     = req.has_param("v");
+
+            // Legacy demo query: v is provided and sizes/multi are not specified
+            if (hasV && !hasSizes && !hasMulti) {
+                auto q = parseVec(req.get_param_value("v"));
+                if ((int)q.size() != DIMS) {
+                    res.status = 400;
+                    res.set_content("{\"error\":\"need " + std::to_string(DIMS) + "D vector\"}",
+                                    "application/json");
+                    return;
+                }
+                int k = 5; try { k = std::stoi(req.get_param_value("k")); } catch (...) {}
+                k = clampInt(k, 1, 100);
+                auto metric = req.get_param_value("metric"); if (metric.empty()) metric = "cosine";
+                auto b = db.benchmark(q, k, metric);
+                std::ostringstream ss;
+                ss << std::fixed << std::setprecision(2);
+                ss << "{\"bruteforceUs\":" << b.bfUs << ",\"kdtreeUs\":" << b.kdUs
+                   << ",\"hnswUs\":"       << b.hnswUs << ",\"itemCount\":" << b.n
+                   << ",\"dimensions\":"   << DIMS
+                   << ",\"k\":"            << k
+                   << ",\"metric\":"       << jS(metric)
+                   << ",\"repetitions\":1"
+                   << ",\"warmup\":0"
+                   << ",\"hnsw_config\":{\"m\":16,\"m0\":32,\"ef_build\":200,\"ef_search\":50}"
+                   << ",\"datasets\":[{"
+                   << "\"size\":"          << b.n
+                   << ",\"bruteforce\":{\"mean_us\":" << b.bfUs << ",\"median_us\":" << b.bfUs << ",\"p95_us\":" << b.bfUs << ",\"min_us\":" << b.bfUs << ",\"max_us\":" << b.bfUs << ",\"index_build_time_us\":0,\"index_build_time_ms\":0.0}"
+                   << ",\"kdtree\":{\"mean_us\":" << b.kdUs << ",\"median_us\":" << b.kdUs << ",\"p95_us\":" << b.kdUs << ",\"min_us\":" << b.kdUs << ",\"max_us\":" << b.kdUs << ",\"recall_at_k\":1.0,\"index_build_time_us\":0,\"index_build_time_ms\":0.0}"
+                   << ",\"hnsw\":{\"mean_us\":" << b.hnswUs << ",\"median_us\":" << b.hnswUs << ",\"p95_us\":" << b.hnswUs << ",\"min_us\":" << b.hnswUs << ",\"max_us\":" << b.hnswUs << ",\"recall_at_k\":1.0,\"index_build_time_us\":0,\"index_build_time_ms\":0.0}"
+                   << "}]}";
+                res.set_content(ss.str(), "application/json");
+                return;
+            }
+
+            BenchmarkConfig cfg;
+            if (hasSizes) {
+                cfg.sizes = parseIntList(req.get_param_value("sizes"));
+            }
+            if (req.has_param("k")) {
+                try { cfg.k = std::stoi(req.get_param_value("k")); } catch (...) {}
+            }
+            if (req.has_param("metric")) {
+                cfg.metric = req.get_param_value("metric");
+            }
+            if (req.has_param("repetitions")) {
+                try { cfg.repetitions = std::stoi(req.get_param_value("repetitions")); } catch (...) {}
+            }
+            if (req.has_param("warmup")) {
+                try { cfg.warmup = std::stoi(req.get_param_value("warmup")); } catch (...) {}
+            }
+            if (req.has_param("dims")) {
+                try { cfg.dims = std::stoi(req.get_param_value("dims")); } catch (...) {}
+            }
+            if (req.has_param("seed")) {
+                try { cfg.seed = (unsigned int)std::stoul(req.get_param_value("seed")); } catch (...) {}
+            }
+            if (req.has_param("m")) {
+                try { cfg.hnsw_m = std::stoi(req.get_param_value("m")); } catch (...) {}
+            }
+            if (req.has_param("m0")) {
+                try { cfg.hnsw_m0 = std::stoi(req.get_param_value("m0")); } catch (...) {}
+            }
+            if (req.has_param("ef_build")) {
+                try { cfg.hnsw_ef_build = std::stoi(req.get_param_value("ef_build")); } catch (...) {}
+            }
+            if (req.has_param("ef_search") || req.has_param("ef")) {
+                std::string efKey = req.has_param("ef_search") ? "ef_search" : "ef";
+                try { cfg.hnsw_ef_search = std::stoi(req.get_param_value(efKey)); } catch (...) {}
+            }
+            if (hasV) {
+                cfg.customQuery = parseVec(req.get_param_value("v"));
+            }
+
+            if (cfg.metric != "cosine" && cfg.metric != "euclidean" && cfg.metric != "manhattan") {
+                res.status = 400;
+                res.set_content("{\"error\":\"unsupported metric '" + cfg.metric + "'. Use cosine, euclidean, or manhattan.\"}", "application/json");
+                return;
+            }
+
+            auto report = runBenchmark(cfg);
+            res.set_content(benchmarkReportToJson(report), "application/json");
+        } catch (const std::exception& ex) {
+            res.status = 500;
+            res.set_content("{\"error\":\"Benchmark error: " + jS(ex.what()) + "\"}", "application/json");
+        } catch (...) {
+            res.status = 500;
+            res.set_content("{\"error\":\"Unknown benchmark failure\"}", "application/json");
         }
-        int k = 5; try { k = std::stoi(req.get_param_value("k")); } catch (...) {}
-        k = clampInt(k, 1, 100);
-        auto metric = req.get_param_value("metric"); if (metric.empty()) metric = "cosine";
-        auto b = db.benchmark(q, k, metric);
-        std::ostringstream ss;
-        ss << "{\"bruteforceUs\":" << b.bfUs << ",\"kdtreeUs\":" << b.kdUs
-           << ",\"hnswUs\":"       << b.hnswUs << ",\"itemCount\":" << b.n << '}';
-        res.set_content(ss.str(), "application/json");
+    });
+
+    svr.Post("/benchmark", [&](const httplib::Request& req, httplib::Response& res) {
+        cors(res);
+        try {
+            BenchmarkConfig cfg;
+            auto szs = extractIntList(req.body, "sizes");
+            if (!szs.empty()) cfg.sizes = szs;
+
+            int k = extractInt(req.body, "k", 0);
+            if (k > 0) cfg.k = k;
+
+            int reps = extractInt(req.body, "repetitions", 0);
+            if (reps > 0) cfg.repetitions = reps;
+
+            int warm = extractInt(req.body, "warmup", -1);
+            if (warm >= 0) cfg.warmup = warm;
+
+            int dims = extractInt(req.body, "dims", 0);
+            if (dims > 0) cfg.dims = dims;
+
+            int seed = extractInt(req.body, "seed", -1);
+            if (seed >= 0) cfg.seed = (unsigned int)seed;
+
+            int m = extractInt(req.body, "m", 0);
+            if (m > 0) cfg.hnsw_m = m;
+
+            int m0 = extractInt(req.body, "m0", 0);
+            if (m0 > 0) cfg.hnsw_m0 = m0;
+
+            int ef_build = extractInt(req.body, "ef_build", 0);
+            if (ef_build > 0) cfg.hnsw_ef_build = ef_build;
+
+            int ef_search = extractInt(req.body, "ef_search", 0);
+            if (ef_search <= 0) ef_search = extractInt(req.body, "ef", 0);
+            if (ef_search > 0) cfg.hnsw_ef_search = ef_search;
+
+            auto met = extractStr(req.body, "metric");
+            if (!met.empty()) cfg.metric = met;
+
+            if (cfg.metric != "cosine" && cfg.metric != "euclidean" && cfg.metric != "manhattan") {
+                res.status = 400;
+                res.set_content("{\"error\":\"unsupported metric '" + cfg.metric + "'. Use cosine, euclidean, or manhattan.\"}", "application/json");
+                return;
+            }
+
+            // Optional custom query vector
+            size_t p = req.body.find("\"v\"");
+            if (p != std::string::npos) {
+                p = req.body.find('[', p);
+                if (p != std::string::npos) {
+                    size_t e = req.body.find(']', p);
+                    if (e != std::string::npos) {
+                        cfg.customQuery = parseVec(req.body.substr(p + 1, e - p - 1));
+                    }
+                }
+            }
+
+            auto report = runBenchmark(cfg);
+            res.set_content(benchmarkReportToJson(report), "application/json");
+        } catch (const std::exception& ex) {
+            res.status = 500;
+            res.set_content("{\"error\":\"Benchmark error: " + jS(ex.what()) + "\"}", "application/json");
+        } catch (...) {
+            res.status = 500;
+            res.set_content("{\"error\":\"Unknown benchmark failure\"}", "application/json");
+        }
     });
 
     svr.Get("/hnsw-info", [&](const httplib::Request&, httplib::Response& res) {
