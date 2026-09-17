@@ -187,20 +187,7 @@ button {
 .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .typing::after { content: '▋'; animation: blink 1s step-end infinite; }
-/* ── SCALING BENCHMARK SUITE ── */
-.size-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.chip { font-family: 'Fira Code', monospace; font-size: 10px; padding: 4px 8px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border); background: var(--panel2); color: var(--muted); transition: all .15s; user-select: none; }
-.chip:hover { color: var(--text); border-color: rgba(124,140,255,.5); }
-.chip.on { color: #fff; background: rgba(124,140,255,.25); border-color: rgba(124,140,255,.7); font-weight: 600; box-shadow: 0 0 6px rgba(124,140,255,.2); }
-
-.bench-tbl { width: 100%; border-collapse: collapse; font-size: 10px; font-family: 'Fira Code', monospace; }
-.bench-tbl th { text-align: left; padding: 6px 6px; color: var(--faint); border-bottom: 1px solid var(--border); font-size: 9px; text-transform: uppercase; white-space: nowrap; }
-.bench-tbl td { padding: 5px 6px; border-bottom: 1px solid rgba(255,255,255,0.03); white-space: nowrap; }
-.bench-tbl tr:hover { background: rgba(255,255,255,0.03); }
-.algo-tag { font-size: 8.5px; padding: 2px 5px; border-radius: 4px; font-weight: 600; display: inline-block; letter-spacing: .4px; }
-.tag-bf { background: rgba(243,139,168,.15); color: #f38ba8; border: 1px solid rgba(243,139,168,.3); }
-.tag-kd { background: rgba(137,220,235,.15); color: #89dceb; border: 1px solid rgba(137,220,235,.3); }
-.tag-hnsw { background: rgba(179,136,255,.15); color: #b388ff; border: 1px solid rgba(179,136,255,.3); }
+@keyframes blink { 50% { opacity: 0; } }
 
 /* ── TOOLTIP ── */
 #tip { position: fixed; display: none; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 7px 11px; font-size: 11px; pointer-events: none; max-width: 220px; z-index: 200; line-height: 1.5; }
@@ -288,10 +275,7 @@ button {
     </div>
     <div>
       <div class="sec">Benchmark</div>
-      <div style="display:flex;gap:6px">
-        <button class="btn-s" onclick="runBenchmark()" style="flex:1" title="Compare on current demo dataset">DEMO BENCH</button>
-        <button class="btn-p" onclick="switchTab('bench')" style="flex:1" title="Run multi-size scaling benchmark">SCALING SUITE</button>
-      </div>
+      <button class="btn-s" onclick="runBenchmark()">COMPARE ALL ALGOS</button>
     </div>
   </div>
 
@@ -304,7 +288,6 @@ button {
       <div class="tab on"  onclick="switchTab('search')">SEARCH</div>
       <div class="tab"     onclick="switchTab('docs')">DOCUMENTS</div>
       <div class="tab"     onclick="switchTab('rag')">ASK AI</div>
-      <div class="tab"     onclick="switchTab('bench')">BENCHMARK</div>
     </div>
 
     <!-- TAB: SEARCH -->
@@ -390,120 +373,6 @@ button {
       </div>
     </div>
 
-    <!-- TAB: BENCHMARK (SCALING SUITE) -->
-    <div class="tab-content" id="tab-bench">
-      <div>
-        <div class="sec">Scaling Benchmark Configuration</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Dataset Sizes (N):</div>
-            <div class="size-chips" id="sizeChips">
-              <span class="chip on" data-size="20" onclick="toggleSizeChip(this)">20</span>
-              <span class="chip on" data-size="100" onclick="toggleSizeChip(this)">100</span>
-              <span class="chip on" data-size="500" onclick="toggleSizeChip(this)">500</span>
-              <span class="chip on" data-size="1000" onclick="toggleSizeChip(this)">1,000</span>
-              <span class="chip on" data-size="5000" onclick="toggleSizeChip(this)">5,000</span>
-              <span class="chip on" data-size="10000" onclick="toggleSizeChip(this)">10,000</span>
-            </div>
-          </div>
-          
-          <div style="display:flex;gap:6px">
-            <div style="flex:1">
-              <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Repetitions:</div>
-              <select id="benchReps" style="padding:7px 8px;font-size:11px">
-                <option value="20">20 runs</option>
-                <option value="50">50 runs</option>
-                <option value="100" selected>100 runs</option>
-                <option value="200">200 runs</option>
-              </select>
-            </div>
-            <div style="flex:1">
-              <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Top-K:</div>
-              <input type="number" id="benchK" value="5" min="1" max="100" style="padding:7px 8px;font-size:11px" />
-            </div>
-            <div style="flex:1">
-              <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Warmup:</div>
-              <input type="number" id="benchWarmup" value="10" min="0" max="50" style="padding:7px 8px;font-size:11px" />
-            </div>
-          </div>
-
-          <div style="display:flex;gap:6px">
-            <div style="flex:1">
-              <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Metric:</div>
-              <select id="benchMetric" style="padding:7px 8px;font-size:11px">
-                <option value="cosine" selected>Cosine</option>
-                <option value="euclidean">Euclidean</option>
-                <option value="manhattan">Manhattan</option>
-              </select>
-            </div>
-            <div style="flex:1">
-              <div style="font-size:10px;color:var(--muted);margin-bottom:3px">HNSW M:</div>
-              <input type="number" id="benchHnswM" value="16" min="4" max="64" style="padding:7px 8px;font-size:11px" />
-            </div>
-            <div style="flex:1">
-              <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Search ef:</div>
-              <input type="number" id="benchHnswEf" value="50" min="10" max="500" style="padding:7px 8px;font-size:11px" />
-            </div>
-          </div>
-
-          <button class="btn-p" id="runScalingBtn" onclick="runScalingBenchmark()" style="margin-top:2px">⚡ RUN SCALING BENCHMARK</button>
-          <div id="benchStatus" style="font-size:10.5px;color:var(--muted);text-align:center">Ready to benchmark</div>
-        </div>
-      </div>
-
-      <!-- SCALING CHART -->
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <div class="sec" style="margin-bottom:0">Scaling Chart (Median Latency)</div>
-          <div style="display:flex;gap:8px;font-size:9.5px">
-            <span style="color:#f38ba8">■ BF</span>
-            <span style="color:#89dceb">■ KD-Tree</span>
-            <span style="color:#b388ff">■ HNSW</span>
-          </div>
-        </div>
-        <div style="position:relative;width:100%;height:200px">
-          <canvas id="benchChart" style="width:100%;height:100%;display:block;border-radius:6px;background:rgba(8,10,15,0.72);border:1px solid var(--border)"></canvas>
-        </div>
-        <div style="font-size:9px;color:var(--faint);margin-top:4px;display:flex;justify-content:space-between">
-          <span>Y: Median Latency (μs)</span>
-          <span>X: Dataset Size (N)</span>
-        </div>
-      </div>
-
-      <!-- RESULTS TABLE -->
-      <div>
-        <div class="sec">Results Table</div>
-        <div style="overflow-x:auto;max-width:100%">
-          <table class="bench-tbl" id="benchResultsTable">
-            <thead>
-              <tr>
-                <th>N</th>
-                <th>Algo</th>
-                <th>Build</th>
-                <th>Mean</th>
-                <th>Median</th>
-                <th>P95</th>
-                <th>Min</th>
-                <th>Max</th>
-                <th>Recall</th>
-              </tr>
-            </thead>
-            <tbody id="benchTableBody">
-              <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:14px">Select sizes above and click Run Benchmark.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- TECHNICAL NOTES -->
-      <div style="font-size:10.5px;color:var(--muted);line-height:1.5">
-        <div class="sec" style="margin-bottom:4px">Technical Reference</div>
-        <div style="margin-bottom:4px"><b style="color:var(--text)">Small N (20):</b> Brute Force streams from L1 CPU cache. HNSW pays priority queue, visited-set hash map, and pointer hops.</div>
-        <div style="margin-bottom:4px"><b style="color:var(--text)">Large N (1k–10k):</b> Brute Force scales linearly O(N·d). HNSW scales logarithmically O(log N).</div>
-        <div><b style="color:var(--text)">Recall@K:</b> Exact neighbor overlap against Brute Force ground truth.</div>
-      </div>
-    </div>
-
   </div><!-- end right-panel -->
 </div><!-- end layout -->
 
@@ -535,17 +404,13 @@ let hoverItem = null, pulse = 0, selAlgo = 'hnsw', searchResults = [];
 //  TABS
 // ════════════════════════════════════════════════════════════
 function switchTab(name) {
-  const names = ['search','docs','rag','bench'];
   document.querySelectorAll('.tab').forEach((t,i) => {
+    const names = ['search','docs','rag'];
     t.classList.toggle('on', names[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('on'));
-  const el = document.getElementById('tab-' + name);
-  if (el) el.classList.add('on');
+  document.getElementById('tab-' + name).classList.add('on');
   if (name === 'docs') loadDocList();
-  if (name === 'bench' && lastBenchmarkData) {
-    setTimeout(() => drawScalingChart(lastBenchmarkData), 50);
-  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -800,226 +665,6 @@ async function runBenchmark() {
     }).join('');
   } catch(_) {}
 }
-
-// ════════════════════════════════════════════════════════════
-//  SCALING BENCHMARK SUITE
-// ════════════════════════════════════════════════════════════
-let lastBenchmarkData = null;
-
-function toggleSizeChip(el) {
-  el.classList.toggle('on');
-}
-
-function getSelectedBenchmarkSizes() {
-  const chips = document.querySelectorAll('#sizeChips .chip.on');
-  const sizes = Array.from(chips).map(c => parseInt(c.dataset.size, 10)).filter(n => !isNaN(n) && n > 0);
-  sizes.sort((a, b) => a - b);
-  return sizes.length ? sizes : [20, 100, 500, 1000, 5000, 10000];
-}
-
-async function runScalingBenchmark() {
-  const btn = document.getElementById('runScalingBtn');
-  const status = document.getElementById('benchStatus');
-  const sizes = getSelectedBenchmarkSizes();
-  const reps = parseInt(document.getElementById('benchReps').value, 10) || 100;
-  const k = parseInt(document.getElementById('benchK').value, 10) || 5;
-  const warmup = parseInt(document.getElementById('benchWarmup').value, 10) || 10;
-  const metric = document.getElementById('benchMetric').value || 'cosine';
-  const m = parseInt(document.getElementById('benchHnswM').value, 10) || 16;
-  const ef = parseInt(document.getElementById('benchHnswEf').value, 10) || 50;
-
-  btn.disabled = true;
-  btn.textContent = 'Running Benchmark...';
-  status.innerHTML = `<span class="thinking"><span class="spinner"></span> Benchmarking [${sizes.join(', ')}] with ${reps} reps...</span>`;
-
-  try {
-    const payload = {
-      sizes: sizes,
-      repetitions: reps,
-      k: k,
-      warmup: warmup,
-      metric: metric,
-      m: m,
-      ef_search: ef,
-      ef_build: 200,
-      dims: 16
-    };
-    const res = await fetch(`${API}/benchmark`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (data.error) {
-      status.innerHTML = `<span style="color:var(--red)">✗ ${escHtml(data.error)}</span>`;
-      btn.disabled = false;
-      btn.textContent = '⚡ RUN SCALING BENCHMARK';
-      return;
-    }
-
-    lastBenchmarkData = data.datasets || [];
-    renderBenchmarkTable(lastBenchmarkData, k);
-    drawScalingChart(lastBenchmarkData);
-    status.innerHTML = `<span style="color:var(--green)">✓ ${data.datasets.length} sizes benchmarked · Reps: ${data.repetitions} · Metric: ${escHtml(data.metric)}</span>`;
-  } catch (err) {
-    status.innerHTML = `<span style="color:var(--red)">✗ Network or server error</span>`;
-  }
-  btn.disabled = false;
-  btn.textContent = '⚡ RUN SCALING BENCHMARK';
-}
-
-function fmtUs(us) {
-  if (us === undefined || us === null) return '-';
-  if (us < 1000) return us.toFixed(1) + ' μs';
-  return (us / 1000).toFixed(2) + ' ms';
-}
-
-function fmtBuildTime(us) {
-  if (us === undefined || us === null || us === 0) return '0 μs';
-  if (us < 1000) return us + ' μs';
-  return (us / 1000).toFixed(1) + ' ms';
-}
-
-function renderBenchmarkTable(datasets, k) {
-  const tbody = document.getElementById('benchTableBody');
-  if (!datasets || !datasets.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:14px">No data returned</td></tr>';
-    return;
-  }
-
-  let html = '';
-  datasets.forEach(d => {
-    const algos = [
-      { name: 'Brute Force', tag: 'tag-bf', data: d.bruteforce, recall: 1.0 },
-      { name: 'KD-Tree',     tag: 'tag-kd', data: d.kdtree,     recall: d.kdtree.recall_at_k },
-      { name: 'HNSW',        tag: 'tag-hnsw', data: d.hnsw,     recall: d.hnsw.recall_at_k }
-    ];
-
-    algos.forEach((a, idx) => {
-      const isFirst = idx === 0;
-      const sizeCell = isFirst ? `<td rowspan="3" style="font-weight:600;border-right:1px solid var(--border);vertical-align:middle;color:var(--text);font-size:11px">${d.size.toLocaleString()}</td>` : '';
-      const recallDisp = (a.recall !== undefined && a.recall !== null) ? (a.recall * 100).toFixed(1) + '%' : '-';
-      const recallCol = (a.recall >= 0.9) ? 'var(--green)' : ((a.recall >= 0.7) ? 'var(--food)' : 'var(--red)');
-
-      html += `<tr>
-        ${sizeCell}
-        <td><span class="algo-tag ${a.tag}">${a.name}</span></td>
-        <td style="color:var(--muted)">${fmtBuildTime(a.data.index_build_time_us)}</td>
-        <td>${fmtUs(a.data.mean_us)}</td>
-        <td style="font-weight:600;color:var(--text)">${fmtUs(a.data.median_us)}</td>
-        <td style="color:var(--muted)">${fmtUs(a.data.p95_us)}</td>
-        <td style="color:var(--faint)">${fmtUs(a.data.min_us)}</td>
-        <td style="color:var(--faint)">${fmtUs(a.data.max_us)}</td>
-        <td style="color:${recallCol};font-weight:600">${recallDisp}</td>
-      </tr>`;
-    });
-  });
-  tbody.innerHTML = html;
-}
-
-function drawScalingChart(datasets) {
-  const canvas = document.getElementById('benchChart');
-  if (!canvas || !datasets || !datasets.length) return;
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const w = rect.width || 380;
-  const h = rect.height || 200;
-
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, w, h);
-
-  const padLeft = 50, padRight = 15, padTop = 15, padBottom = 25;
-  const plotW = w - padLeft - padRight;
-  const plotH = h - padTop - padBottom;
-
-  // Find max median latency
-  let maxLat = 5;
-  datasets.forEach(d => {
-    maxLat = Math.max(maxLat, d.bruteforce.median_us, d.kdtree.median_us, d.hnsw.median_us);
-  });
-  maxLat *= 1.15; // margin
-
-  // Draw horizontal grid lines & labels
-  ctx.font = '9px Fira Code, monospace';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  const gridSteps = 4;
-  for (let i = 0; i <= gridSteps; i++) {
-    const yVal = (maxLat / gridSteps) * i;
-    const y = padTop + plotH - (i / gridSteps) * plotH;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padLeft, y);
-    ctx.lineTo(w - padRight, y);
-    ctx.stroke();
-
-    ctx.fillStyle = '#64748b';
-    ctx.fillText(yVal < 1000 ? Math.round(yVal) + ' μs' : (yVal / 1000).toFixed(1) + ' ms', padLeft - 6, y);
-  }
-
-  // Draw vertical grid lines & X-axis labels
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  const nPoints = datasets.length;
-  const xCoords = datasets.map((d, i) => {
-    const x = padLeft + (nPoints === 1 ? plotW / 2 : (i / (nPoints - 1)) * plotW);
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.beginPath();
-    ctx.moveTo(x, padTop);
-    ctx.lineTo(x, padTop + plotH);
-    ctx.stroke();
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(d.size >= 1000 ? (d.size / 1000) + 'k' : d.size, x, padTop + plotH + 6);
-    return x;
-  });
-
-  // Series lines
-  const series = [
-    { name: 'Brute Force', col: '#f38ba8', getter: d => d.bruteforce.median_us },
-    { name: 'KD-Tree',     col: '#89dceb', getter: d => d.kdtree.median_us },
-    { name: 'HNSW',        col: '#b388ff', getter: d => d.hnsw.median_us }
-  ];
-
-  series.forEach(s => {
-    ctx.strokeStyle = s.col;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    datasets.forEach((d, i) => {
-      const lat = s.getter(d);
-      const y = padTop + plotH - (lat / maxLat) * plotH;
-      const x = xCoords[i];
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    // Markers
-    datasets.forEach((d, i) => {
-      const lat = s.getter(d);
-      const y = padTop + plotH - (lat / maxLat) * plotH;
-      const x = xCoords[i];
-
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
-      ctx.fillStyle = s.col;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(x, y, 1.8, 0, 2 * Math.PI);
-      ctx.fillStyle = '#080a0f';
-      ctx.fill();
-    });
-  });
-}
-
-window.addEventListener('resize', () => {
-  if (lastBenchmarkData) drawScalingChart(lastBenchmarkData);
-});
 
 async function loadHNSW() {
   try {
