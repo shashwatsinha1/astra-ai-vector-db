@@ -699,6 +699,22 @@ public:
     OllamaClient(const std::string& h = "127.0.0.1", int p = 11434)
         : host(h), port(p) {}
 
+    static OllamaClient fromEnv() {
+        const char* hEnv = std::getenv("OLLAMA_HOST");
+        const char* pEnv = std::getenv("OLLAMA_PORT");
+        std::string h = (hEnv && *hEnv) ? hEnv : "127.0.0.1";
+        if (h.rfind("http://", 0) == 0) {
+            h = h.substr(7);
+        } else if (h.rfind("https://", 0) == 0) {
+            h = h.substr(8);
+        }
+        while (!h.empty() && h.back() == '/') {
+            h.pop_back();
+        }
+        int p = (pEnv && *pEnv) ? clampInt(std::atoi(pEnv), 1, 65535) : 11434;
+        return OllamaClient(h, p);
+    }
+
     bool isAvailable() {
         httplib::Client cli(host, port);
         cli.set_connection_timeout(2, 0);
@@ -1331,13 +1347,20 @@ void loadDemo(VectorDB& db) {
 int main() {
     VectorDB   db(DIMS);
     DocumentDB docDB;
-    OllamaClient ollama;
+    const char* dataPathEnv = std::getenv("VECTORDB_DATA_PATH");
+    std::string dataPath = (dataPathEnv && *dataPathEnv) ? dataPathEnv : "data/vectors.jsonl";
+    docDB.loadFromDisk(dataPath);
+
+    OllamaClient ollama = OllamaClient::fromEnv();
     const char* watchEnv = std::getenv("VECTORDB_WATCH_DIR");
     const char* hostEnv  = std::getenv("VECTORDB_HOST");
-    const char* portEnv  = std::getenv("VECTORDB_PORT");
-    std::string watchDir = watchEnv ? watchEnv : "documents";
-    std::string host = hostEnv ? hostEnv : "127.0.0.1";
-    int port = portEnv ? clampInt(std::atoi(portEnv), 1, 65535) : 8080;
+    const char* portEnv  = std::getenv("PORT");
+    if (!portEnv || !*portEnv) {
+        portEnv = std::getenv("VECTORDB_PORT");
+    }
+    std::string watchDir = (watchEnv && *watchEnv) ? watchEnv : "documents";
+    std::string host     = (hostEnv && *hostEnv) ? hostEnv : "0.0.0.0";
+    int port             = (portEnv && *portEnv) ? clampInt(std::atoi(portEnv), 1, 65535) : 8080;
     FileWatcher watcher(docDB, ollama, watchDir);
 
     loadDemo(db);
@@ -1350,6 +1373,8 @@ int main() {
     std::cout << "Ollama: " << (ollamaUp ? "ONLINE" : "OFFLINE (install from ollama.com)") << std::endl;
     if (ollamaUp) std::cout << "  embed model: " << ollama.embedModel
                             << "  gen model: "   << ollama.genModel << std::endl;
+    std::cout << "Persistence: " << std::filesystem::absolute(dataPath).string()
+              << " (" << docDB.size() << " docs loaded)" << std::endl;
     std::cout << "Watching: " << std::filesystem::absolute(watchDir).string() << std::endl;
     watcher.start();
 
@@ -1555,8 +1580,6 @@ int main() {
         int  k        = clampInt(extractInt(req.body, "k", 3), 1, 20);
         auto typeFilter = extractStr(req.body, "type");
         auto sourceFilter = extractStr(req.body, "source");
-        auto typeFilter = extractStr(req.body, "type");
-        auto sourceFilter = extractStr(req.body, "source");
         if (question.empty()) {
             res.set_content("{\"error\":\"need question\"}", "application/json"); return;
         }
@@ -1588,6 +1611,8 @@ int main() {
         cors(res);
         auto question = extractStr(req.body, "question");
         int  k        = clampInt(extractInt(req.body, "k", 3), 1, 20);
+        auto typeFilter = extractStr(req.body, "type");
+        auto sourceFilter = extractStr(req.body, "source");
         if (question.empty()) {
             res.set_content("{\"error\":\"need question\"}", "application/json"); return;
         }

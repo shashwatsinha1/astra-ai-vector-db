@@ -22,22 +22,49 @@ You can configure the service with environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `VECTORDB_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` only if you intentionally want LAN access. |
-| `VECTORDB_PORT` | `8080` | HTTP server port. |
+| `VECTORDB_HOST` | `0.0.0.0` | Bind address. Defaults to all interfaces. |
+| `PORT` | `8080` | HTTP server port (standard Render port env var). |
+| `VECTORDB_PORT` | `8080` | Fallback HTTP server port if `PORT` is unset. |
+| `VECTORDB_DATA_PATH` | `data/vectors.jsonl` | Persistent storage path for ingested documents and vectors. |
 | `VECTORDB_WATCH_DIR` | `documents` | Folder scanned for live document ingestion. |
+| `OLLAMA_HOST` | `127.0.0.1` | Hostname or IP of the external/local Ollama server. |
+| `OLLAMA_PORT` | `11434` | Port of the external/local Ollama server. |
 
-### Real-Time Workflow
+### Real-Time Workflow (Local Development)
 
 ```powershell
 ollama serve
 ollama pull nomic-embed-text
 ollama pull llama3.2
 
-g++ -std=c++17 -O2 main.cpp -o db -lws2_32
-./db
+g++ -std=c++17 -O2 main.cpp -o vectordb -lws2_32
+./vectordb
 ```
 
 Then open `http://127.0.0.1:8080`, drop `.txt` or `.md` files into `documents/`, and watch the Live File Ingestion panel update. Ask questions in the Ask AI tab; the answer is generated from the indexed file chunks.
+
+### Deploying to Render (Docker Web Service)
+
+You can deploy this service reliably on [Render](https://render.com) using Render's official **Docker** environment and a persistent disk.
+
+#### Important Note on Ollama
+> **Ollama is NOT bundled** in the Render service. The embedding and generation models (`nomic-embed-text` and `llama3.2:1b`) require significant RAM and compute, making them too heavy for standard free or small Render instances. Ollama must run on a separate host or VPS (with GPU/sufficient CPU) reachable over the network at `OLLAMA_HOST` and `OLLAMA_PORT`. If Ollama is unreachable, VectorDB starts up gracefully with `Ollama: OFFLINE` status.
+
+#### Render Configuration
+
+- **Environment / Runtime**: `Docker` (uses the included multi-stage [`Dockerfile`](file:///d:/Your_Own_AI/Dockerfile))
+- **Persistent Disk**:
+  - Name: `vectordb-data`
+  - Mount Path: `/data`
+  - Size: 1 GB (or more)
+  - *Note: Render persistent disks require a Starter plan or higher.*
+- **Environment Variables**:
+  - `OLLAMA_HOST`: `<external-ollama-host-ip-or-domain>`
+  - `OLLAMA_PORT`: `11434`
+  - `VECTORDB_DATA_PATH`: `/data/vectors.jsonl`
+  - `VECTORDB_WATCH_DIR`: `/data/documents`
+
+You can deploy automatically using the included `render.yaml` Blueprint file via Render's **Blueprints** dashboard.
 
 ### CMake Build
 

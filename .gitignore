@@ -36,6 +36,8 @@
 *.exe
 *.out
 *.app
+vectordb
+data/
 
 # debug information files
 *.dwo

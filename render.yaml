@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: your-own-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter # Render persistent disks require Starter plan or above
+    disk:
+      name: vectordb-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: OLLAMA_HOST
+        value: "YOUR_EXTERNAL_OLLAMA_HOST" # Replace with public IP or domain of your external Ollama instance
+      - key: OLLAMA_PORT
+        value: "11434"
+      - key: VECTORDB_DATA_PATH
+        value: /data/vectors.jsonl
+      - key: VECTORDB_WATCH_DIR
+        value: /data/documents
